@@ -404,35 +404,38 @@ def chat(dialog, messages, stream=True, **kwargs):
             think = ans[0] + "</think>"
             answer = ans[1]
 
-        if knowledges and (prompt_config.get("quote", True) and kwargs.get("quote", True)):
-            idx = set([])
-            if embd_mdl and not re.search(r"\[ID:([0-9]+)\]", answer):
-                answer, idx = retriever.insert_citations(
-                    answer,
-                    [ck["content_ltks"] for ck in kbinfos["chunks"]],
-                    [ck["vector"] for ck in kbinfos["chunks"]],
-                    embd_mdl,
-                    tkweight=1 - dialog.vector_similarity_weight,
-                    vtweight=dialog.vector_similarity_weight,
-                )
-            else:
-                for match in re.finditer(r"\[ID:([0-9]+)\]", answer):
-                    i = int(match.group(1))
-                    if i < len(kbinfos["chunks"]):
-                        idx.add(i)
-
-            answer, idx = repair_bad_citation_formats(answer, kbinfos, idx)
-
-            idx = set([kbinfos["chunks"][int(i)]["doc_id"] for i in idx])
-            recall_docs = [d for d in kbinfos["doc_aggs"] if d["doc_id"] in idx]
-            if not recall_docs:
-                recall_docs = kbinfos["doc_aggs"]
-            kbinfos["doc_aggs"] = recall_docs
-
+        if knowledges:
+            # Always build references from retrieved knowledge, independent of quote flag
             refs = deepcopy(kbinfos)
             for c in refs["chunks"]:
                 if c.get("vector"):
                     del c["vector"]
+
+            # Only inject in-text citations and filter doc_aggs when quote is enabled
+            if prompt_config.get("quote", True) and kwargs.get("quote", True):
+                idx = set([])
+                if embd_mdl and not re.search(r"\[ID:([0-9]+)\]", answer):
+                    answer, idx = retriever.insert_citations(
+                        answer,
+                        [ck["content_ltks"] for ck in kbinfos["chunks"]],
+                        [ck["vector"] for ck in kbinfos["chunks"]],
+                        embd_mdl,
+                        tkweight=1 - dialog.vector_similarity_weight,
+                        vtweight=dialog.vector_similarity_weight,
+                    )
+                else:
+                    for match in re.finditer(r"\[ID:([0-9]+)\]", answer):
+                        i = int(match.group(1))
+                        if i < len(kbinfos["chunks"]):
+                            idx.add(i)
+
+                answer, idx = repair_bad_citation_formats(answer, kbinfos, idx)
+
+                idx = set([kbinfos["chunks"][int(i)]["doc_id"] for i in idx])
+                recall_docs = [d for d in refs["doc_aggs"] if d["doc_id"] in idx]
+                if not recall_docs:
+                    recall_docs = refs["doc_aggs"]
+                refs["doc_aggs"] = recall_docs
 
         if answer.lower().find("invalid key") >= 0 or answer.lower().find("invalid api") >= 0:
             answer += " Please set LLM API-Key in 'User Setting -> Model providers -> API-Key'"

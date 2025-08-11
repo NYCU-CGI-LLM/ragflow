@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 import json
+import os
 import re
 import time
 
@@ -408,6 +409,75 @@ def chat_completion_openai_like(tenant_id, chat_id):
             response["choices"][0]["message"]["reference"] = chunks_format(answer.get("reference", []))
 
         return jsonify(response)
+
+@manager.route("/chats_simple_rag/<chat_id>/chat/completions", methods=["POST"])
+@validate_request("model", "messages")
+@token_required
+def chat_completion_simple_rag(tenant_id, chat_id):
+    """
+    OpenAI-compatible chat completions endpoint that uses our RAG chain.
+    This endpoint is non-streaming and returns document IDs used for retrieval.
+    """
+    req = request.get_json()
+
+    messages = req.get("messages", [])
+    if len(messages) < 1:
+        return get_error_data_result("You have to provide messages.")
+    if messages[-1]["role"] != "user":
+        return get_error_data_result("The last content of this conversation is not from user.")
+
+    prompt = messages[-1]["content"]
+
+    dia = DialogService.query(tenant_id=tenant_id, id=chat_id, status=StatusEnum.VALID.value)
+    if not dia:
+        return get_error_data_result(f"You don't own the chat {chat_id}")
+    dia = dia[0]
+
+    # Filter system and non-sense assistant messages
+    msg = []
+    for m in messages:
+        if m["role"] == "system":
+            continue
+        if m["role"] == "assistant" and not msg:
+            continue
+        msg.append(m)
+
+    answer = None
+    # Set quote to True to ensure we get references
+    for ans in chat(dia, msg, False, quote=False):
+        answer = ans
+        break
+
+    content = answer["answer"]
+    doc_ids = []
+    if answer.get("reference") and answer["reference"].get("chunks"):
+        doc_ids = list(set([int(os.path.splitext(c["docnm_kwd"])[0]) for c in answer["reference"]["chunks"] if "docnm_kwd" in c]))
+
+    response = {
+        "id": f"chatcmpl-{get_uuid()}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": req.get("model", ""),
+        "usage": {
+            "prompt_tokens": len(prompt),
+            "completion_tokens": len(content),
+            "total_tokens": len(prompt) + len(content)
+        },
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": content,
+                },
+                "finish_reason": "stop",
+                "index": 0,
+            }
+        ],
+        "doc_ids": doc_ids,
+        "metadata": {}
+    }
+
+    return jsonify(response)
 
 
 @manager.route("/agents_openai/<agent_id>/chat/completions", methods=["POST"])  # noqa: F821

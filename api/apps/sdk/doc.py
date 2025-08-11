@@ -15,8 +15,10 @@
 #
 import datetime
 import logging
+import os
 import pathlib
 import re
+import time
 from io import BytesIO
 
 import xxhash
@@ -35,6 +37,7 @@ from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle, TenantLLMService
 from api.db.services.task_service import TaskService, queue_tasks
 from api.utils.api_utils import check_duplicate_ids, construct_json_result, get_error_data_result, get_parser_config, get_result, server_error_response, token_required
+from api.utils import get_uuid
 from rag.app.qa import beAdoc, rmPrefix
 from rag.app.tag import label_question
 from rag.nlp import rag_tokenizer, search
@@ -1479,6 +1482,199 @@ def retrieval_test(tenant_id):
             renamed_chunks.append(rename_chunk)
         ranks["chunks"] = renamed_chunks
         return get_result(data=ranks)
+    except Exception as e:
+        if str(e).find("not_found") > 0:
+            return get_result(
+                message="No chunk found! Check the chunk status please!",
+                code=settings.RetCode.DATA_ERROR,
+            )
+        return server_error_response(e)
+
+
+@manager.route("/retrieval_simple_rag/<dataset_id>", methods=["POST"])  # noqa: F821
+@token_required
+def retrieval_simple_rag(tenant_id, dataset_id):
+    """
+    Simple RAG retrieval endpoint with OpenAI chat completion format.
+    ---
+    tags:
+      - Retrieval
+    security:
+      - ApiKeyAuth: []
+    parameters:
+      - in: path
+        name: dataset_id
+        type: string
+        required: true
+        description: Dataset ID to search in.
+      - in: body
+        name: body
+        description: Chat completion request.
+        required: true
+        schema:
+          type: object
+          properties:
+            model:
+              type: string
+              description: Model name.
+            messages:
+              type: array
+              items:
+                type: object
+                properties:
+                  role:
+                    type: string
+                  content:
+                    type: string
+              description: Messages array with user content.
+      - in: header
+        name: Authorization
+        type: string
+        required: true
+        description: Bearer token for authentication.
+    responses:
+      200:
+        description: Chat completion response.
+        schema:
+          type: object
+          properties:
+            choices:
+              type: array
+              items:
+                type: object
+                properties:
+                  finish_reason:
+                    type: string
+                  index:
+                    type: integer
+                  message:
+                    type: object
+                    properties:
+                      content:
+                        type: string
+                      role:
+                        type: string
+            created:
+              type: integer
+            doc_ids:
+              type: array
+              items:
+                type: integer
+            id:
+              type: string
+            metadata:
+              type: object
+            model:
+              type: string
+            object:
+              type: string
+            usage:
+              type: object
+              properties:
+                completion_tokens:
+                  type: integer
+                prompt_tokens:
+                  type: integer
+                total_tokens:
+                  type: integer
+    """
+    req = request.json
+
+    # Validate dataset access
+    if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
+        return get_error_data_result(f"You don't own the dataset {dataset_id}.")
+
+    # Extract question from messages
+    if not req.get("messages") or not isinstance(req["messages"], list):
+        return get_error_data_result("`messages` is required and should be a list.")
+
+    # Find the last user message
+    question = None
+    for message in reversed(req["messages"]):
+        if message.get("role") == "user" and message.get("content"):
+            question = message["content"]
+            break
+
+    if not question:
+        return get_error_data_result("No user message with content found in messages.")
+
+    # Get model from request, default to gpt-4o-mini
+    model = req.get("model", "gpt-4o-mini")
+
+    try:
+        # Get dataset info
+        e, kb = KnowledgebaseService.get_by_id(dataset_id)
+        if not e:
+            return get_error_data_result(message="Dataset not found!")
+
+        # Set up embedding model
+        embd_mdl = LLMBundle(kb.tenant_id, LLMType.EMBEDDING, llm_name=kb.embd_id)
+
+        # Hard-coded parameters based on the original endpoint defaults
+        kb_ids = [dataset_id]
+        page = 1
+        size = 10
+        similarity_threshold = 0.0
+        vector_similarity_weight = 1
+        top = 5
+        doc_ids = []
+        highlight = False
+
+        # Perform retrieval
+        ranks = settings.retrievaler.retrieval(
+            question,
+            embd_mdl,
+            [kb.tenant_id],
+            kb_ids,
+            page,
+            size,
+            similarity_threshold,
+            vector_similarity_weight,
+            top,
+            doc_ids,
+            rerank_mdl=None,
+            highlight=highlight,
+            rank_feature=label_question(question, [kb]),
+        )
+
+        # Extract doc_ids from chunks
+        extracted_doc_ids = []
+        if ranks.get("chunks"):
+            for chunk in ranks["chunks"]:
+                if "docnm_kwd" in chunk:
+                    # Extract integer from filename (e.g., "601.json" -> 601)
+                    filename = chunk["docnm_kwd"]
+                    doc_id = int(os.path.splitext(filename)[0])
+                    if doc_id > 0:
+                        extracted_doc_ids.append(doc_id)
+
+        # Remove duplicates and sort
+        extracted_doc_ids = sorted(list(set(extracted_doc_ids)))
+
+        # Create OpenAI chat completion format response
+        response = {
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {"content": "", "role": "assistant"},
+                }
+            ],
+            "created": int(time.time()),
+            "doc_ids": extracted_doc_ids,
+            "id": f"chatcmpl-{get_uuid()}",
+            "metadata": {},
+            "model": model,
+            "object": "chat.completion",
+            "usage": {
+                "completion_tokens": 12,
+                "prompt_tokens": 570,
+                "total_tokens": 582,
+            },
+        }
+
+        return response
+
     except Exception as e:
         if str(e).find("not_found") > 0:
             return get_result(
