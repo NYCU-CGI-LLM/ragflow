@@ -135,11 +135,11 @@ def init_settings():
     global API_KEY, PARSERS, HOST_IP, HOST_PORT, SECRET_KEY
     API_KEY = LLM.get("api_key")
     PARSERS = LLM.get(
-        "parsers", "naive:General,qa:Q&A,resume:Resume,manual:Manual,table:Table,paper:Paper,book:Book,laws:Laws,presentation:Presentation,picture:Picture,one:One,audio:Audio,email:Email,tag:Tag"
+        "parsers", "naive:General,qa:Q&A,resume:Resume,manual:Manual,table:Table,paper:Paper,book:Book,laws:Laws,presentation:Presentation,picture:Picture,one:One,audio:Audio,email:Email,tag:Tag,json:JSON"
     )
 
     HOST_IP = get_base_config(RAG_FLOW_SERVICE_NAME, {}).get("host", "127.0.0.1")
-    HOST_PORT = get_base_config(RAG_FLOW_SERVICE_NAME, {}).get("http_port")
+    HOST_PORT = int(os.environ.get('SERVER_PORT')) or get_base_config(RAG_FLOW_SERVICE_NAME, {}).get("http_port")
 
     SECRET_KEY = get_or_create_secret_key()
 
