@@ -206,6 +206,21 @@ services:
       retries: 3
       start_period: 10s    
 
+  adminer:
+    image: adminer
+    container_name: ragflow-adminer
+    restart: on-failure
+    ports:
+      - ${ADMINER_PORT:-8088}:8080
+    environment:
+      - ADMINER_DEFAULT_SERVER=mysql
+      - TZ=${TIMEZONE}
+    networks:
+      - ragflow
+    depends_on:
+      mysql:
+        condition: service_healthy
+
 
 
 volumes:

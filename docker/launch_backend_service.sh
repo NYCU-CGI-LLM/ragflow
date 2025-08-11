@@ -7,7 +7,7 @@ set -e
 load_env_file() {
     # Get the directory of the current script
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local env_file="$script_dir/.env"
+    local env_file="$script_dir/.env_direct"
 
     # Check if .env file exists
     if [ -f "$env_file" ]; then
@@ -23,6 +23,20 @@ load_env_file() {
 
 # Load environment variables
 load_env_file
+
+# Check for command line arguments
+# The first argument is the server port.
+if [ -n "$1" ]; then
+    export SERVER_PORT="$1"
+    echo "Using command line argument for SERVER_PORT: $SERVER_PORT"
+fi
+
+# The second argument is the number of workers.
+if [ -n "$2" ]; then
+    export WS="$2"
+    echo "Using command line argument for WS: $WS"
+fi
+
 
 # Unset HTTP proxies that might be set by Docker daemon
 export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
