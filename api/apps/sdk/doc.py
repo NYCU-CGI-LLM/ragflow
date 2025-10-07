@@ -1643,12 +1643,18 @@ def retrieval_simple_rag(tenant_id, dataset_id):
         if ranks.get("chunks"):
             for chunk in ranks["chunks"]:
                 if "content_with_weight" in chunk:
-                    # Extract integer from content ("id": xx)
-                    json_data = json.loads(chunk["content_with_weight"])
-                    if "id" in json_data:
-                        doc_id = json_data["id"]
-                        if doc_id >= 0:
-                            extracted_doc_ids.append(doc_id)
+                    content = chunk["content_with_weight"]
+                    # Find the line starting with "id:" and extract the integer
+                    for line in content.split('\n'):
+                        if line.startswith("id:"):
+                            try:
+                                doc_id = int(line.split(":")[1].strip())
+                                if doc_id >= 0:
+                                    extracted_doc_ids.append(doc_id)
+                            except (ValueError, IndexError):
+                                # Handle cases where conversion to int fails or line format is unexpected
+                                pass
+                            break
 
         # Remove duplicates and sort
         extracted_doc_ids = sorted(list(set(extracted_doc_ids)))
