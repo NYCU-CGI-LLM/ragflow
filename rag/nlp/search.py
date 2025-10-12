@@ -125,8 +125,8 @@ class Dealer:
                         res = self.dataStore.search(src, [], filters, [], orderBy, offset, limit, idx_names, kb_ids)
                         total = self.dataStore.getTotal(res)
                     else:
-                        matchText, _ = self.qryr.question(qst, min_match=0.1)
-                        matchDense.extra_options["similarity"] = 0.17
+                        matchText, _ = self.qryr.question(qst, min_match=0.0)
+                        matchDense.extra_options["similarity"] = 0.0
                         res = self.dataStore.search(src, highlightFields, filters, [matchText, matchDense, fusionExpr],
                                                     orderBy, offset, limit, idx_names, kb_ids, rank_feature=rank_feature)
                         total = self.dataStore.getTotal(res)

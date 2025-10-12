@@ -18,6 +18,22 @@ import re
 from rag.nlp import find_codec, rag_tokenizer
 from rag.app.naive import tokenize_chunks
 
+def _json_obj_to_text(obj):
+    """
+    Converts a JSON object (dict) to a key-value string format.
+    e.g., {"name": "A", "def": "B"} -> "name: A\ndef: B"
+    """
+    if not isinstance(obj, dict):
+        return str(obj)
+
+    text_parts = []
+    for key, value in obj.items():
+        s_val = str(value).strip()
+        if s_val:
+            text_parts.append(f"{key}: {s_val}")
+    return "\n".join(text_parts)
+
+
 def chunk(filename, binary=None, from_page=0, to_page=100000,
           lang="Chinese", callback=None, **kwargs):
     """
@@ -38,9 +54,9 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
             data = json.loads(content)
             if isinstance(data, list):
                 for item in data:
-                    sections.append(json.dumps(item, ensure_ascii=False))
+                    sections.append(_json_obj_to_text(item))
             elif isinstance(data, dict):
-                sections.append(json.dumps(data, ensure_ascii=False))
+                sections.append(_json_obj_to_text(data))
         except json.JSONDecodeError:
             callback(0.8, "Failed to decode JSON.")
             return []

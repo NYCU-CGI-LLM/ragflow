@@ -35,6 +35,58 @@ services:
       - ragflow
     restart: on-failure
 
+    # (Optional) One-time helper to set the kibana_system password in ES via API
+  es-kibana-setup:
+    image: curlimages/curl:8.9.1
+    container_name: ragflow-es-kibana-setup
+    profiles: [kibana]
+    env_file: .env
+    command: >
+      sh -c '
+        echo "Waiting for Elasticsearch...";
+        until curl -s http://es01:9200 >/dev/null; do sleep 2; done;
+        echo "Setting kibana_system password...";
+        curl -s -u "elastic:${ELASTIC_PASSWORD}" \
+             -H "Content-Type: application/json" \
+             -X POST http://es01:9200/_security/user/kibana_system/_password \
+             -d "{\"password\":\"${KIBANA_PASSWORD}\"}" || true;
+        echo "Done."
+      '
+    depends_on:
+      es01:
+        condition: service_healthy
+    networks: [ragflow]
+    restart: "no"
+
+  kibana:
+    container_name: ragflow-kibana
+    profiles: [kibana]
+    image: kibana:${STACK_VERSION}
+    ports:
+      - ${KIBANA_PORT:-5601}:5601
+    env_file: .env
+    environment:
+      - ELASTICSEARCH_HOSTS=http://es01:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
+      - TZ=${TIMEZONE}
+    depends_on:
+      es01:
+        condition: service_healthy
+    networks:
+      - ragflow
+    volumes:
+      - kibana_data:/usr/share/kibana/data
+    mem_limit: ${MEM_LIMIT}
+    healthcheck:
+      # Check the login page is served (no auth needed)
+      test: ["CMD", "curl", "-fsS", "http://localhost:5601/login"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    restart: on-failure
+
+
   opensearch01:
     container_name: ragflow-opensearch-01
     profiles:
@@ -235,6 +287,8 @@ volumes:
   minio_data:
     driver: local
   redis_data:
+    driver: local
+  kibana_data:
     driver: local
 
 networks:

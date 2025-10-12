@@ -19,6 +19,7 @@ import os
 import pathlib
 import re
 import time
+import json
 from io import BytesIO
 
 import xxhash
@@ -1613,10 +1614,10 @@ def retrieval_simple_rag(tenant_id, dataset_id):
         # Hard-coded parameters based on the original endpoint defaults
         kb_ids = [dataset_id]
         page = 1
-        size = 10
+        size = 5
         similarity_threshold = 0.0
         vector_similarity_weight = 1
-        top = 5
+        top = 1024
         doc_ids = []
         highlight = False
 
@@ -1641,12 +1642,19 @@ def retrieval_simple_rag(tenant_id, dataset_id):
         extracted_doc_ids = []
         if ranks.get("chunks"):
             for chunk in ranks["chunks"]:
-                if "docnm_kwd" in chunk:
-                    # Extract integer from filename (e.g., "601.json" -> 601)
-                    filename = chunk["docnm_kwd"]
-                    doc_id = int(os.path.splitext(filename)[0])
-                    if doc_id > 0:
-                        extracted_doc_ids.append(doc_id)
+                if "content_with_weight" in chunk:
+                    content = chunk["content_with_weight"]
+                    # Find the line starting with "id:" and extract the integer
+                    for line in content.split('\n'):
+                        if line.startswith("id:"):
+                            try:
+                                doc_id = int(line.split(":")[1].strip())
+                                if doc_id >= 0:
+                                    extracted_doc_ids.append(doc_id)
+                            except (ValueError, IndexError):
+                                # Handle cases where conversion to int fails or line format is unexpected
+                                pass
+                            break
 
         # Remove duplicates and sort
         extracted_doc_ids = sorted(list(set(extracted_doc_ids)))
