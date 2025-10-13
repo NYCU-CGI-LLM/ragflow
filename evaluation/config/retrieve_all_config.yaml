@@ -1,0 +1,23 @@
+# Example config to retrieve ALL documents (size=-1)
+# Use this to retrieve the maximum number of documents (up to 10000 due to Elasticsearch KNN limits)
+
+retrieval:
+  api_key: "ragflow-YOUR_API_KEY_HERE"
+  dataset_name: "My Knowledge Base"
+  
+  # Use -1 to retrieve all documents (up to 10000 max due to Elasticsearch KNN limits)
+  size: -1
+  
+  dynamic_rerank_limit: true
+  metrics:
+    - recall
+  k_values:
+    - 5
+    - 10
+
+dataset:
+  path: "./dataset/example_dataset.json"
+  limit: 10  # Only evaluate 10 samples for testing
+
+output:
+  results_path: "results/evaluation_results_all.json"

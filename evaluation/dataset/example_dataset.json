@@ -1,0 +1,23 @@
+[
+  {
+    "user_id": "438612",
+    "prompt": "\n患者临床信息：\n主诉：反复皮肤青紫斑点1年，又作伴乏力3天\n现病史：患者1年前无明显诱因出现皮肤青紫斑点...\n",
+    "expected_answer": "气虚不摄证",
+    "format_type": "reading_comprehension_five",
+    "expected_doc_id": 593
+  },
+  {
+    "user_id": "488605",
+    "prompt": "\n患者临床信息：\n主诉：大便色黑间作4天\n现病史：患者4天前无明显诱因出现大便色黑...\n",
+    "expected_answer": "气虚不摄证",
+    "format_type": "reading_comprehension_five",
+    "expected_doc_id": 593
+  },
+  {
+    "user_id": "481722",
+    "prompt": "\n患者临床信息：\n主诉：反复呕血黑便2年，再发7小时。\n现病史：患者2年前无明显诱因出现呕血黑便...\n",
+    "expected_answer": "气虚不摄证",
+    "format_type": "reading_comprehension_five",
+    "expected_doc_id": 593
+  }
+]

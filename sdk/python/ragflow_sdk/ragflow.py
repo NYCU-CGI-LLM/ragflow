@@ -185,6 +185,35 @@ class RAGFlow:
             return result_list
         raise Exception(res["message"])
 
+    def get_chat(self, chat_id: str | None = None, name: str | None = None) -> Chat:
+        """
+        Fetch a chat either by ID or by name.
+        
+        Args:
+            chat_id: Unique identifier of the chat.
+            name: Friendly chat name.
+        
+        Returns:
+            Chat: Chat object matching the requested identifier.
+        
+        Raises:
+            ValueError: If neither chat_id nor name is provided.
+            Exception: If the chat cannot be found.
+        """
+        if not chat_id and not name:
+            raise ValueError("Either chat_id or name must be provided to locate a chat.")
+        
+        # Prefer explicit chat_id when both are provided
+        lookup_id = chat_id or None
+        lookup_name = name if not lookup_id else None
+        
+        chats = self.list_chats(page=1, page_size=1, id=lookup_id, name=lookup_name)
+        if chats:
+            return chats[0]
+        
+        identifier = lookup_id or lookup_name
+        raise Exception(f"Chat '{identifier}' not found")
+
     def retrieve(
         self,
         dataset_ids,
@@ -224,6 +253,53 @@ class RAGFlow:
                 chunks.append(chunk)
             return chunks
         raise Exception(res.get("message"))
+
+    def simple_rag_retrieval(
+        self,
+        dataset_id: str,
+        question: str,
+        model: str = "gpt-4o-mini",
+        size: int = 5,
+        vector_similarity_weight: float = 1.0,
+        dynamic_rerank_limit: bool = True
+    ) -> list[int]:
+        """
+        Simple RAG retrieval using OpenAI chat completion format.
+        Returns document IDs directly without full chunk details.
+        
+        Args:
+            dataset_id: ID of the dataset to search in
+            question: Query/question text
+            model: Model name (default: gpt-4o-mini)
+            size: Number of chunks to return (default: 5). 
+                  Use -1 to retrieve all documents (capped at 10000 due to Elasticsearch KNN limits)
+            vector_similarity_weight: Weight for vector similarity, 0-1 (default: 1.0)
+        
+        Returns:
+            List of document IDs
+        
+        Raises:
+            Exception: If retrieval fails
+        """
+        data_json = {
+            "model": model,
+            "messages": [{"role": "user", "content": question}],
+            "size": size,
+            "vector_similarity_weight": vector_similarity_weight,
+            "dynamic_rerank_limit": dynamic_rerank_limit
+        }
+        res = self.post(f"/retrieval_simple_rag/{dataset_id}", json=data_json)
+        res = res.json()
+        
+        if res.get("doc_ids") is not None:
+            return res["doc_ids"]
+        
+        # If there's an error message, raise it
+        if res.get("message"):
+            raise Exception(res["message"])
+        
+        # Otherwise return empty list
+        return []
 
     def list_agents(self, page: int = 1, page_size: int = 30, orderby: str = "update_time", desc: bool = True, id: str | None = None, title: str | None = None) -> list[Agent]:
         res = self.get(

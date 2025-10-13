@@ -41,7 +41,13 @@ from timeit import default_timer as timer
 import tracemalloc
 import signal
 import trio
-import exceptiongroup
+try:
+    # Python 3.11+ has ExceptionGroup built-in
+    ExceptionGroup = ExceptionGroup
+except NameError:
+    # For Python 3.10 and earlier, use the backport
+    import exceptiongroup
+    ExceptionGroup = exceptiongroup.ExceptionGroup
 import faulthandler
 
 import numpy as np
@@ -679,7 +685,7 @@ async def handle_task():
         CURRENT_TASKS.pop(task["id"], None)
         try:
             err_msg = str(e)
-            while isinstance(e, exceptiongroup.ExceptionGroup):
+            while isinstance(e, ExceptionGroup):
                 e = e.exceptions[0]
                 err_msg += ' -- ' + str(e)
             set_progress(task["id"], prog=-1, msg=f"[Exception]: {err_msg}")

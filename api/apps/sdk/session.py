@@ -415,8 +415,13 @@ def chat_completion_openai_like(tenant_id, chat_id):
 @token_required
 def chat_completion_simple_rag(tenant_id, chat_id):
     """
-    OpenAI-compatible chat completions endpoint that uses our RAG chain.
-    This endpoint is non-streaming and returns document IDs used for retrieval.
+    OpenAI-compatible chat completions endpoint that uses RAG retrieval.
+    This endpoint uses the same retrieval logic as /retrieval_simple_rag
+    and returns document IDs used for retrieval along with the chat response.
+    
+    Retrieval parameters (size and vector similarity weight) are taken from the dialog
+    configuration. You can optionally toggle dynamic rerank behaviour per request by
+    passing `dynamic_rerank_limit` (defaults to True).
     """
     req = request.get_json()
 
@@ -433,51 +438,112 @@ def chat_completion_simple_rag(tenant_id, chat_id):
         return get_error_data_result(f"You don't own the chat {chat_id}")
     dia = dia[0]
 
-    # Filter system and non-sense assistant messages
-    msg = []
-    for m in messages:
-        if m["role"] == "system":
-            continue
-        if m["role"] == "assistant" and not msg:
-            continue
-        msg.append(m)
+    # Use dialog-configured retrieval parameters
+    dialog_top_n = getattr(dia, "top_n", 5)
+    dialog_vector_similarity_weight = float(getattr(dia, "vector_similarity_weight", 1.0))
+    dynamic_rerank_limit = req.get("dynamic_rerank_limit", True)
+    
+    # Get knowledge bases for this dialog
+    if not dia.kb_ids:
+        return get_error_data_result(f"Chat {chat_id} has no knowledge bases configured")
+    
+    try:
+        # Ensure consistent KNN quality
+        dia.top_k = 1024  # Fixed for consistent quality
+        
+        # Filter system and non-sense assistant messages
+        msg = []
+        for m in messages:
+            if m["role"] == "system":
+                continue
+            if m["role"] == "assistant" and not msg:
+                continue
+            msg.append(m)
+        
+        # Call chat() with our modified dialog parameters
+        # chat() will use our custom retrieval parameters and pass dynamic_rerank_limit through kwargs
+        answer = None
+        for ans in chat(dia, msg, False, quote=False, dynamic_rerank_limit=dynamic_rerank_limit):
+            answer = ans
+            break  # Get the single complete answer (stream=False)
+        
+        content = answer["answer"]
+        
+        # Extract doc_ids from the answer's reference (from chat's retrieval)
+        extracted_doc_ids = []
+        def _extract_id_from_chunk(chunk: dict):
+            # Prefer explicit doc_id if present and convertible
+            raw_id = chunk.get("doc_id") or chunk.get("document_id")
+            if raw_id is not None:
+                try:
+                    return int(raw_id)
+                except (TypeError, ValueError):
+                    pass
+            
+            # Look for "id:" marker inside weighted content
+            content = chunk.get("content_with_weight") or chunk.get("content", "")
+            if isinstance(content, str):
+                for line in content.split("\n"):
+                    if line.startswith("id:"):
+                        try:
+                            return int(line.split(":", 1)[1].strip())
+                        except (IndexError, ValueError):
+                            continue
+            
+            # Finally attempt to parse the filename-like docnm_kwd
+            doc_name = chunk.get("docnm_kwd")
+            if isinstance(doc_name, str):
+                base_name = os.path.splitext(doc_name)[0]
+                try:
+                    return int(base_name)
+                except ValueError:
+                    pass
+            return None
 
-    answer = None
-    # Set quote to True to ensure we get references
-    for ans in chat(dia, msg, False, quote=False):
-        answer = ans
-        break
-
-    content = answer["answer"]
-    doc_ids = []
-    if answer.get("reference") and answer["reference"].get("chunks"):
-        doc_ids = list(set([int(os.path.splitext(c["docnm_kwd"])[0]) for c in answer["reference"]["chunks"] if "docnm_kwd" in c]))
-
-    response = {
-        "id": f"chatcmpl-{get_uuid()}",
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": req.get("model", ""),
-        "usage": {
-            "prompt_tokens": len(prompt),
-            "completion_tokens": len(content),
-            "total_tokens": len(prompt) + len(content)
-        },
-        "choices": [
-            {
-                "message": {
-                    "role": "assistant",
-                    "content": content,
-                },
-                "finish_reason": "stop",
-                "index": 0,
+        if answer.get("reference") and answer["reference"].get("chunks"):
+            for chunk in answer["reference"]["chunks"]:
+                doc_id = _extract_id_from_chunk(chunk)
+                if doc_id is not None and doc_id >= 0:
+                    extracted_doc_ids.append(doc_id)
+            # Preserve ordering while removing duplicates
+            extracted_doc_ids = list(dict.fromkeys(extracted_doc_ids))
+        
+        response = {
+            "id": f"chatcmpl-{get_uuid()}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": req.get("model", ""),
+            "usage": {
+                "prompt_tokens": len(prompt),
+                "completion_tokens": len(content),
+                "total_tokens": len(prompt) + len(content)
+            },
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": content,
+                    },
+                    "finish_reason": "stop",
+                    "index": 0,
+                }
+            ],
+            "doc_ids": extracted_doc_ids,  # Use the doc_ids from our custom retrieval
+            "metadata": {
+                "retrieval_params": {
+                    "size": dialog_top_n,
+                    "vector_similarity_weight": dialog_vector_similarity_weight,
+                    "dynamic_rerank_limit": dynamic_rerank_limit
+                }
             }
-        ],
-        "doc_ids": doc_ids,
-        "metadata": {}
-    }
-
-    return jsonify(response)
+        }
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return get_error_data_result(f"Retrieval error: {str(e)}")
 
 
 @manager.route("/agents_openai/<agent_id>/chat/completions", methods=["POST"])  # noqa: F821

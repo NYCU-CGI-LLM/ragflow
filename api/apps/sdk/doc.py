@@ -1514,10 +1514,12 @@ def retrieval_simple_rag(tenant_id, dataset_id):
         required: true
         schema:
           type: object
+          required:
+            - messages
           properties:
             model:
               type: string
-              description: Model name.
+              description: Model name (default gpt-4o-mini).
             messages:
               type: array
               items:
@@ -1528,6 +1530,19 @@ def retrieval_simple_rag(tenant_id, dataset_id):
                   content:
                     type: string
               description: Messages array with user content.
+            size:
+              type: integer
+              description: Number of chunks to return (default 5). Use -1 to retrieve all documents (capped at 10000 due to Elasticsearch KNN limits). The system automatically adjusts the retrieval batch size to ensure consistent ranking quality.
+              default: 5
+            vector_similarity_weight:
+              type: number
+              format: float
+              description: Weight for vector similarity (0-1, default 1.0).
+              default: 1.0
+            dynamic_rerank_limit:
+              type: boolean
+              description: Whether to dynamically adjust the reranking limit (default True).
+              default: True
       - in: header
         name: Authorization
         type: string
@@ -1599,27 +1614,43 @@ def retrieval_simple_rag(tenant_id, dataset_id):
     if not question:
         return get_error_data_result("No user message with content found in messages.")
 
-    # Get model from request, default to gpt-4o-mini
+    # Get optional parameters from request with defaults
     model = req.get("model", "gpt-4o-mini")
+    size = req.get("size", 5)
+    vector_similarity_weight = float(req.get("vector_similarity_weight", 1.0))
+    dynamic_rerank_limit = req.get("dynamic_rerank_limit", True)
 
     try:
         # Get dataset info
         e, kb = KnowledgebaseService.get_by_id(dataset_id)
+        print("kb.chunk_num", kb.chunk_num)
+
         if not e:
             return get_error_data_result(message="Dataset not found!")
+        
+        # Handle size=-1 to retrieve all documents
+        if size == -1:
+            # Use the actual chunk count from the knowledge base, capped at 10000
+            # due to Elasticsearch KNN query limits
+            size = min(max(kb.chunk_num if kb.chunk_num else 10000, 1000), 10000)
 
         # Set up embedding model
         embd_mdl = LLMBundle(kb.tenant_id, LLMType.EMBEDDING, llm_name=kb.embd_id)
 
-        # Hard-coded parameters based on the original endpoint defaults
+        # Fixed parameters
         kb_ids = [dataset_id]
-        page = 1
-        size = 5
+        # # Keep 'top' fixed for consistent KNN search quality
+        # # 'top' is the vector search candidate pool size - should be stable for quality
+        # # 'size' (page_size) controls final result count
+        # # Use larger top for very large size requests to ensure good coverage
+        # if size > 1024:
+        #     top = min(size * 2, 10000)  # 2x size up to 10000 for large requests
+        # else:
+        top = 1024  # Fixed 1024 for normal requests (consistent quality)
         similarity_threshold = 0.0
-        vector_similarity_weight = 1
-        top = 1024
         doc_ids = []
         highlight = False
+        page = 1
 
         # Perform retrieval
         ranks = settings.retrievaler.retrieval(
@@ -1633,9 +1664,11 @@ def retrieval_simple_rag(tenant_id, dataset_id):
             vector_similarity_weight,
             top,
             doc_ids,
+            aggs=False,
             rerank_mdl=None,
             highlight=highlight,
             rank_feature=label_question(question, [kb]),
+            dynamic_rerank_limit=dynamic_rerank_limit
         )
 
         # Extract doc_ids from chunks
@@ -1656,8 +1689,10 @@ def retrieval_simple_rag(tenant_id, dataset_id):
                                 pass
                             break
 
-        # Remove duplicates and sort
-        extracted_doc_ids = sorted(list(set(extracted_doc_ids)))
+        # Remove duplicates while preserving order (ranking by similarity)
+        # Use dict.fromkeys() to maintain insertion order (Python 3.7+)
+        extracted_doc_ids = list(dict.fromkeys(extracted_doc_ids))
+        print("extracted_doc_ids", extracted_doc_ids)
 
         # Create OpenAI chat completion format response
         response = {

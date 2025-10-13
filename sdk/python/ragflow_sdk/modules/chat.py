@@ -86,3 +86,47 @@ class Chat(Base):
         res = res.json()
         if res.get("code") != 0:
             raise Exception(res.get("message"))
+
+    def chat_simple_rag(
+        self,
+        messages: list[dict],
+        model: str = "gpt-4o-mini",
+        dynamic_rerank_limit: bool = True
+    ) -> dict:
+        """
+        Simple RAG chat completion using OpenAI format.
+        Uses the same retrieval logic as simple_rag_retrieval while relying on the
+        dialog's configured retrieval parameters.
+        
+        Args:
+            messages: List of message dictionaries with 'role' and 'content'
+            model: Model name (default: gpt-4o-mini)
+            dynamic_rerank_limit: Whether to use dynamic rerank limit (default: True)
+        
+        Returns:
+            dict: OpenAI-compatible chat completion response with doc_ids
+            {
+                "id": "chatcmpl-...",
+                "object": "chat.completion",
+                "created": 1234567890,
+                "model": "gpt-4o-mini",
+                "choices": [{
+                    "message": {"role": "assistant", "content": "..."},
+                    "finish_reason": "stop",
+                    "index": 0
+                }],
+                "doc_ids": [1, 2, 3],
+                "metadata": {
+                    "retrieval_params": {...}
+                },
+                "usage": {...}
+            }
+        """
+        data = {
+            "messages": messages,
+            "model": model,
+            "dynamic_rerank_limit": dynamic_rerank_limit
+        }
+        
+        res = self.post(f"/chats_simple_rag/{self.id}/chat/completions", data)
+        return res.json()

@@ -344,6 +344,10 @@ def chat(dialog, messages, stream=True, **kwargs):
                     yield think
         else:
             if embd_mdl:
+                # Get dynamic_rerank_limit from kwargs or prompt_config
+                dynamic_rerank_limit = kwargs.get("dynamic_rerank_limit", 
+                    prompt_config.get("dynamic_rerank_limit", False))
+                
                 kbinfos = retriever.retrieval(
                     " ".join(questions),
                     embd_mdl,
@@ -358,6 +362,7 @@ def chat(dialog, messages, stream=True, **kwargs):
                     aggs=False,
                     rerank_mdl=rerank_mdl,
                     rank_feature=label_question(" ".join(questions), kbs),
+                    dynamic_rerank_limit=dynamic_rerank_limit
                 )
             if prompt_config.get("tavily_api_key"):
                 tav = Tavily(prompt_config["tavily_api_key"])

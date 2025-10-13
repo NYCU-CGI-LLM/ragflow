@@ -17,6 +17,8 @@
 import base64
 import click
 import re
+import sys
+from pathlib import Path
 
 from flask import Flask
 from werkzeug.security import generate_password_hash
@@ -73,6 +75,30 @@ def reset_email(email, new_email, email_confirm):
     UserService.update_user(user[0].id,user_dict)
     click.echo(click.style('Congratulations!, email has been reset.', fg='green'))
 
+@click.command('ragas', help='Run RAGAS evaluation on RAG system')
+@click.option('--config', required=True, type=click.Path(exists=True), help='Path to evaluation config JSON file')
+def run_ragas(config):
+    """Run RAGAS evaluation using configuration file"""
+    try:
+        # Add project root to path to import evaluation module
+        project_root = Path(__file__).parent.parent.parent
+        if str(project_root) not in sys.path:
+            sys.path.insert(0, str(project_root))
+        
+        from evaluation.ragas_evaluation import run_evaluation
+        
+        click.echo(click.style(f'Starting RAGAS evaluation with config: {config}', fg='green'))
+        results = run_evaluation(config)
+        click.echo(click.style('✓ Evaluation completed successfully!', fg='green'))
+        
+    except Exception as e:
+        click.echo(click.style(f'Error during evaluation: {str(e)}', fg='red'))
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
 def register_commands(app: Flask):
     app.cli.add_command(reset_password)
     app.cli.add_command(reset_email)
+    app.cli.add_command(run_ragas)

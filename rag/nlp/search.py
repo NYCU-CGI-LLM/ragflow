@@ -347,19 +347,26 @@ class Dealer:
     def retrieval(self, question, embd_mdl, tenant_ids, kb_ids, page, page_size, similarity_threshold=0.2,
                   vector_similarity_weight=0.3, top=1024, doc_ids=None, aggs=True,
                   rerank_mdl=None, highlight=False,
-                  rank_feature: dict | None = {PAGERANK_FLD: 10}):
+                  rank_feature: dict | None = {PAGERANK_FLD: 10}, dynamic_rerank_limit=False):
         ranks = {"total": 0, "chunks": [], "doc_aggs": {}}
         if not question:
             return ranks
 
-        RERANK_LIMIT = 64
-        RERANK_LIMIT = int(RERANK_LIMIT//page_size + ((RERANK_LIMIT%page_size)/(page_size*1.) + 0.5)) * page_size if page_size>1 else 1
-        if RERANK_LIMIT < 1: ## when page_size is very large the RERANK_LIMIT will be 0.
-            RERANK_LIMIT = 1
-        req = {"kb_ids": kb_ids, "doc_ids": doc_ids, "page": math.ceil(page_size*page/RERANK_LIMIT), "size": RERANK_LIMIT,
-               "question": question, "vector": True, "topk": top,
-               "similarity": similarity_threshold,
-               "available_int": 1}
+        if dynamic_rerank_limit:
+            RERANK_LIMIT = 64
+            RERANK_LIMIT = int(RERANK_LIMIT//page_size + ((RERANK_LIMIT%page_size)/(page_size*1.) + 0.5)) * page_size if page_size>1 else 1
+            if RERANK_LIMIT < 1: ## when page_size is very large the RERANK_LIMIT will be 0.
+                RERANK_LIMIT = 1
+            req = {"kb_ids": kb_ids, "doc_ids": doc_ids, "page": math.ceil(page_size*page/RERANK_LIMIT), "size": RERANK_LIMIT,
+                "question": question, "vector": True, "topk": top,
+                "similarity": similarity_threshold,
+                "available_int": 1}
+        else:
+            req = {"kb_ids": kb_ids, "doc_ids": doc_ids, "page": page, "size": page_size,
+                "question": question, "vector": True, "topk": top,
+                "similarity": similarity_threshold,
+                "available_int": 1}
+        # print("Req", req)
 
 
         if isinstance(tenant_ids, str):
