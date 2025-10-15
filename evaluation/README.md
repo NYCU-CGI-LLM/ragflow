@@ -128,6 +128,7 @@ output:
 generation:
   api_key: "ragflow-{your_api_key}"
   chat_name: "My Assistant"  # or chat_id: "{your_chat_id}"
+  # size: 8  # Optional: override retrieval chunk count for this evaluation run
   dynamic_rerank_limit: true
   metrics:
     - recall

@@ -13,8 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-
-
+from typing import Optional
 from .base import Base
 from .session import Session
 
@@ -91,7 +90,8 @@ class Chat(Base):
         self,
         messages: list[dict],
         model: str = "gpt-4o-mini",
-        dynamic_rerank_limit: bool = True
+        dynamic_rerank_limit: bool = True,
+        size: Optional[int] = None,
     ) -> dict:
         """
         Simple RAG chat completion using OpenAI format.
@@ -102,6 +102,7 @@ class Chat(Base):
             messages: List of message dictionaries with 'role' and 'content'
             model: Model name (default: gpt-4o-mini)
             dynamic_rerank_limit: Whether to use dynamic rerank limit (default: True)
+            size: Optional override for number of chunks retrieved (defaults to dialog setting)
         
         Returns:
             dict: OpenAI-compatible chat completion response with doc_ids
@@ -125,8 +126,10 @@ class Chat(Base):
         data = {
             "messages": messages,
             "model": model,
-            "dynamic_rerank_limit": dynamic_rerank_limit
+            "dynamic_rerank_limit": dynamic_rerank_limit,
         }
+        if size is not None:
+            data["size"] = size
         
         res = self.post(f"/chats_simple_rag/{self.id}/chat/completions", data)
         return res.json()

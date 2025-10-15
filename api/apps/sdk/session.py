@@ -420,8 +420,8 @@ def chat_completion_simple_rag(tenant_id, chat_id):
     and returns document IDs used for retrieval along with the chat response.
     
     Retrieval parameters (size and vector similarity weight) are taken from the dialog
-    configuration. You can optionally toggle dynamic rerank behaviour per request by
-    passing `dynamic_rerank_limit` (defaults to True).
+    configuration. You can optionally override size and toggle dynamic rerank behaviour per
+    request by passing `size` and/or `dynamic_rerank_limit` (defaults to dialog settings).
     """
     req = request.get_json()
 
@@ -439,9 +439,19 @@ def chat_completion_simple_rag(tenant_id, chat_id):
     dia = dia[0]
 
     # Use dialog-configured retrieval parameters
-    dialog_top_n = getattr(dia, "top_n", 5)
+    requested_size = req.get("size")
+    if requested_size is not None:
+        try:
+            dialog_top_n = int(requested_size)
+        except (TypeError, ValueError):
+            return get_error_data_result("`size` must be a positive integer.")
+        if dialog_top_n <= 0:
+            return get_error_data_result("`size` must be a positive integer.")
+    else:
+        dialog_top_n = getattr(dia, "top_n", 5)
     dialog_vector_similarity_weight = float(getattr(dia, "vector_similarity_weight", 1.0))
     dynamic_rerank_limit = req.get("dynamic_rerank_limit", True)
+    dia.top_n = dialog_top_n
     
     # Get knowledge bases for this dialog
     if not dia.kb_ids:

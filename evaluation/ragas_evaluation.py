@@ -192,10 +192,15 @@ class RagasEvaluator:
                     "Ensure your config provides 'chat_id' or 'chat_name' under the generation section."
                 )
 
-            response = self.chat.chat_simple_rag(
-                messages=[{"role": "user", "content": query}],
-                dynamic_rerank_limit=self.config.dynamic_rerank_limit
-            )
+            chat_kwargs: Dict[str, Any] = {
+                "messages": [{"role": "user", "content": query}],
+                "dynamic_rerank_limit": self.config.dynamic_rerank_limit,
+            }
+            generation_size = self.config.generation_size
+            if generation_size is not None:
+                chat_kwargs["size"] = generation_size
+
+            response = self.chat.chat_simple_rag(**chat_kwargs)
             
             generated_answer = response['choices'][0]['message']['content']
             retrieved_doc_ids: List[int] = []
@@ -447,6 +452,8 @@ class RagasEvaluator:
                 'chat_name': self.config.chat_name,
                 'linked_dataset_ids': self.chat_dataset_ids,
             })
+            if self.config.generation_size is not None:
+                config_summary['size'] = self.config.generation_size
         
         evaluation_results = {
             'config': config_summary,

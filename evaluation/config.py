@@ -90,13 +90,17 @@ class EvaluationConfig:
                 raise ValueError("Missing 'api_key' in generation config.")
             if "chat_id" not in generation and "chat_name" not in generation:
                 raise ValueError("Generation config requires either 'chat_id' or 'chat_name'.")
-            prohibited = {"size", "vector_similarity_weight"}
+            prohibited = {"vector_similarity_weight"}
             illegal_keys = prohibited.intersection(generation.keys())
             if illegal_keys:
                 raise ValueError(
                     f"Generation config cannot define {', '.join(sorted(illegal_keys))}; "
                     "these parameters are controlled by the chat configuration."
                 )
+            if "size" in generation:
+                size_value = generation["size"]
+                if not isinstance(size_value, int) or size_value <= 0:
+                    raise ValueError("Generation config 'size' must be a positive integer.")
 
         dataset_cfg = self.config["dataset"]
         if "path" not in dataset_cfg:
@@ -212,6 +216,12 @@ class EvaluationConfig:
         if self.mode != "generation":
             return None
         return self.config["generation"].get("chat_name")
+
+    @property
+    def generation_size(self) -> Optional[int]:
+        if self.mode != "generation":
+            return None
+        return self.config["generation"].get("size")
 
     # -------------------------------------------------------------------------
     # Flags
