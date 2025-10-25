@@ -1621,12 +1621,11 @@ def retrieval_simple_rag(tenant_id, dataset_id):
     model = req.get("model", "gpt-4o-mini")
     size = req.get("size", 5)
     vector_similarity_weight = float(req.get("vector_similarity_weight", 1.0))
-    dynamic_rerank_limit = req.get("dynamic_rerank_limit", True)
+    dynamic_rerank_limit = req.get("dynamic_rerank_limit", False)
 
     try:
         # Get dataset info
         e, kb = KnowledgebaseService.get_by_id(dataset_id)
-        print("kb.chunk_num", kb.chunk_num)
 
         if not e:
             return get_error_data_result(message="Dataset not found!")
@@ -1649,7 +1648,7 @@ def retrieval_simple_rag(tenant_id, dataset_id):
         # if size > 1024:
         #     top = min(size * 2, 10000)  # 2x size up to 10000 for large requests
         # else:
-        top = 1024  # Fixed 1024 for normal requests (consistent quality)
+        top = 1027
         similarity_threshold = 0.0
         doc_ids = []
         highlight = False
@@ -1711,7 +1710,6 @@ def retrieval_simple_rag(tenant_id, dataset_id):
         # Remove duplicates while preserving order (ranking by similarity)
         # Use dict.fromkeys() to maintain insertion order (Python 3.7+)
         extracted_doc_ids = list(dict.fromkeys(extracted_doc_ids))
-        print("extracted_doc_ids", extracted_doc_ids)
 
         # Create OpenAI chat completion format response
         response = {

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export CUDA_VISIBLE_DEVICES=1,3
+
 # Exit immediately if a command exits with a non-zero status
 set -e
 

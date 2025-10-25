@@ -107,11 +107,11 @@ class Dealer:
                 total = self.dataStore.getTotal(res)
                 logging.debug("Dealer.search TOTAL: {}".format(total))
             else:
-                matchDense = self.get_vector(qst, emb_mdl, topk, req.get("similarity", 0.1))
+                matchDense = self.get_vector(qst, emb_mdl, topk, req.get("similarity", 0.0))
                 q_vec = matchDense.embedding_data
                 src.append(f"q_{len(q_vec)}_vec")
 
-                fusionExpr = FusionExpr("weighted_sum", topk, {"weights": "0.05,0.95"})
+                fusionExpr = FusionExpr("weighted_sum", topk, {"weights": "0.0, 1.0"})
                 matchExprs = [matchText, matchDense, fusionExpr]
 
                 res = self.dataStore.search(src, highlightFields, filters, matchExprs, orderBy, offset, limit,
