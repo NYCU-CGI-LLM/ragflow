@@ -60,6 +60,7 @@ class Chunk(BaseModel):
     image_id: str = ""
     available: bool = True
     positions: list[list[int]] = Field(default_factory=list)
+    json_id: str | None = None
 
     @validator("positions")
     def validate_positions(cls, value):
@@ -979,6 +980,7 @@ def list_chunks(tenant_id, dataset_id, document_id):
             "image_id": chunk.get("img_id", ""),
             "available": bool(chunk.get("available_int", 1)),
             "positions": chunk.get("position_int", []),
+            "json_id": chunk.get("json_id"),
         }
         res["chunks"].append(final_chunk)
         _ = Chunk(**final_chunk)
@@ -998,6 +1000,7 @@ def list_chunks(tenant_id, dataset_id, document_id):
                 "image_id": sres.field[id].get("img_id", ""),
                 "available": bool(int(sres.field[id].get("available_int", "1"))),
                 "positions": sres.field[id].get("position_int", []),
+                "json_id": sres.field[id].get("json_id"),
             }
             res["chunks"].append(d)
             _ = Chunk(**d)  # validate the chunk
@@ -1675,19 +1678,35 @@ def retrieval_simple_rag(tenant_id, dataset_id):
         extracted_doc_ids = []
         if ranks.get("chunks"):
             for chunk in ranks["chunks"]:
-                if "content_with_weight" in chunk:
+                doc_id = None
+                raw_id = chunk.get("json_id")
+                if raw_id is not None:
+                    raw_id_str = str(raw_id).strip()
+                    if raw_id_str:
+                        try:
+                            doc_id = int(raw_id_str)
+                        except ValueError:
+                            doc_id = raw_id_str
+                if doc_id is None and "content_with_weight" in chunk:
                     content = chunk["content_with_weight"]
-                    # Find the line starting with "id:" and extract the integer
                     for line in content.split('\n'):
                         if line.startswith("id:"):
+                            value = ""
                             try:
-                                doc_id = int(line.split(":")[1].strip())
-                                if doc_id >= 0:
-                                    extracted_doc_ids.append(doc_id)
-                            except (ValueError, IndexError):
-                                # Handle cases where conversion to int fails or line format is unexpected
-                                pass
+                                value = line.split(":", 1)[1].strip()
+                            except IndexError:
+                                value = ""
+                            if value:
+                                try:
+                                    doc_id = int(value)
+                                except ValueError:
+                                    doc_id = value
                             break
+                if doc_id is None:
+                    continue
+                if isinstance(doc_id, int) and doc_id < 0:
+                    continue
+                extracted_doc_ids.append(doc_id)
 
         # Remove duplicates while preserving order (ranking by similarity)
         # Use dict.fromkeys() to maintain insertion order (Python 3.7+)

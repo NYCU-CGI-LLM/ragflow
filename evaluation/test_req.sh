@@ -1,6 +1,6 @@
-curl -X POST http://localhost:9380/api/v1/retrieval_simple_rag/6ba750d6a34e11f0a29a37d227f1c0af \
+curl -X POST http://localhost:9380/api/v1/retrieval_simple_rag/ba0821aeae7211f09aed15fbde8cad07 \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ragflow-c1NzBmZjdhYTM1MDExZjBhMjlhMzdkMj" \
+  -H "Authorization: Bearer ragflow-M1MDg2NjMwNzhlNDExZjA4OTRlNzQ1Nj" \
   -d '{
     "model": "gpt-4o-mini",
     "messages": [

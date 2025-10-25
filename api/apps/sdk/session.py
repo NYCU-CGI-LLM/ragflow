@@ -482,6 +482,16 @@ def chat_completion_simple_rag(tenant_id, chat_id):
         # Extract doc_ids from the answer's reference (from chat's retrieval)
         extracted_doc_ids = []
         def _extract_id_from_chunk(chunk: dict):
+            # Prefer explicit json_id metadata
+            raw_json_id = chunk.get("json_id")
+            if raw_json_id is not None:
+                json_id_str = str(raw_json_id).strip()
+                if json_id_str:
+                    try:
+                        return int(json_id_str)
+                    except ValueError:
+                        return json_id_str
+
             # Prefer explicit doc_id if present and convertible
             raw_id = chunk.get("doc_id") or chunk.get("document_id")
             if raw_id is not None:
@@ -498,7 +508,10 @@ def chat_completion_simple_rag(tenant_id, chat_id):
                         try:
                             return int(line.split(":", 1)[1].strip())
                         except (IndexError, ValueError):
-                            continue
+                            cleaned = line.split(":", 1)[1].strip() if ":" in line else ""
+                            if cleaned:
+                                return cleaned
+                        continue
             
             # Finally attempt to parse the filename-like docnm_kwd
             doc_name = chunk.get("docnm_kwd")
@@ -507,14 +520,19 @@ def chat_completion_simple_rag(tenant_id, chat_id):
                 try:
                     return int(base_name)
                 except ValueError:
-                    pass
+                    if base_name:
+                        return base_name
             return None
 
         if answer.get("reference") and answer["reference"].get("chunks"):
             for chunk in answer["reference"]["chunks"]:
                 doc_id = _extract_id_from_chunk(chunk)
-                if doc_id is not None and doc_id >= 0:
-                    extracted_doc_ids.append(doc_id)
+                if isinstance(doc_id, int):
+                    if doc_id >= 0:
+                        extracted_doc_ids.append(doc_id)
+                elif isinstance(doc_id, str):
+                    if doc_id:
+                        extracted_doc_ids.append(doc_id)
             # Preserve ordering while removing duplicates
             extracted_doc_ids = list(dict.fromkeys(extracted_doc_ids))
         

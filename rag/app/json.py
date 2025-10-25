@@ -20,18 +20,26 @@ from rag.app.naive import tokenize_chunks
 
 def _json_obj_to_text(obj):
     """
-    Converts a JSON object (dict) to a key-value string format.
-    e.g., {"name": "A", "def": "B"} -> "name: A\ndef: B"
+    Converts a JSON object (dict) to a key-value string format while
+    extracting the original `id` field as chunk metadata.
     """
+    section = {"text": ""}
     if not isinstance(obj, dict):
-        return str(obj)
+        section["text"] = str(obj).strip()
+        return section
 
+    json_id = obj.get("id")
     text_parts = []
     for key, value in obj.items():
+        if key == "id":
+            continue
         s_val = str(value).strip()
         if s_val:
             text_parts.append(f"{key}: {s_val}")
-    return "\n".join(text_parts)
+    if json_id is not None:
+        section["json_id"] = json_id
+    section["text"] = "\n".join(text_parts).strip()
+    return section
 
 
 def chunk(filename, binary=None, from_page=0, to_page=100000,
@@ -54,13 +62,16 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
             data = json.loads(content)
             if isinstance(data, list):
                 for item in data:
-                    sections.append(_json_obj_to_text(item))
+                    section = _json_obj_to_text(item)
+                    if section.get("text"):
+                        sections.append(section)
             elif isinstance(data, dict):
-                sections.append(_json_obj_to_text(data))
+                section = _json_obj_to_text(data)
+                if section.get("text"):
+                    sections.append(section)
         except json.JSONDecodeError:
             callback(0.8, "Failed to decode JSON.")
             return []
     
     res = tokenize_chunks(sections, doc, is_english)
     return res
-

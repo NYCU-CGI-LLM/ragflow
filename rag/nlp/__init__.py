@@ -268,20 +268,35 @@ def tokenize_chunks(chunks, doc, eng, pdf_parser=None):
     res = []
     # wrap up as es documents
     for ii, ck in enumerate(chunks):
-        if len(ck.strip()) == 0:
+        metadata = {}
+        text = ck
+        if isinstance(ck, dict):
+            text = ck.get("text", "")
+            metadata = {k: v for k, v in ck.items() if k != "text"}
+        if not isinstance(text, str):
+            text = str(text)
+        if len(text.strip()) == 0:
             continue
-        logging.debug("-- {}".format(ck))
+        logging.debug("-- {}".format(text))
         d = copy.deepcopy(doc)
         if pdf_parser:
             try:
-                d["image"], poss = pdf_parser.crop(ck, need_position=True)
+                d["image"], poss = pdf_parser.crop(text, need_position=True)
                 add_positions(d, poss)
-                ck = pdf_parser.remove_tag(ck)
+                text = pdf_parser.remove_tag(text)
             except NotImplementedError:
                 pass
         else:
             add_positions(d, [[ii]*5])
-        tokenize(d, ck, eng)
+        tokenize(d, text, eng)
+        for key, value in metadata.items():
+            if value is None:
+                continue
+            if isinstance(value, (int, float)):
+                value = str(value)
+            elif not isinstance(value, str):
+                value = str(value)
+            d[key] = value
         res.append(d)
     return res
 
